@@ -12,6 +12,7 @@ import format.csv.Utf8Reader;
 class Compiler
 {
   var game: _GameConfig;
+  var options: _Options;
 
   public function new()
     {
@@ -25,17 +26,22 @@ class Compiler
       var args = Sys.args();
       if (args.length == 0)
         {
-          p('Usage: compiler <game.json>');
+          p('Usage: compiler [options] <game.json>');
+          p('Command-line options:');
+          p('  --tasks <task,...>: run only given tasks (comma-separated)');
           return;
         }
 
+      // parse command-line options
+      parseOptions(args);
+
       // read game config
-      if (!FileSystem.exists(args[0]))
+      if (!FileSystem.exists(options.fileName))
         {
-          p(args[0] + ' does not exist, exiting.');
+          p(options.fileName + ' does not exist, exiting.');
           return;
         }
-      var json = File.getContent(args[0]);
+      var json = File.getContent(options.fileName);
       game = Json.parse(json);
 
       p('Building game ' + game.name + ' version ' +
@@ -44,9 +50,17 @@ class Compiler
       // create temp dirs
       Sys.command('mkdir', [ '-p', 'tmp', 'results' ]);
 
-      var t1 = Sys.time();
+      var t0 = Sys.time();
       for (t in game.tasks)
         {
+          // only run given tasks
+          if (options.tasks != null &&
+              !Lambda.has(options.tasks, t.id))
+            {
+              p('Skipping task ' + t.name + '...');
+              continue;
+            }
+
           p('Running task ' + t.name + '...');
           var t1 = Sys.time();
 
@@ -60,8 +74,41 @@ class Compiler
           p('Task took ' + time + ' seconds.');
         }
 
-      var time = Std.int(Sys.time() - t1);
+      var time = Std.int(Sys.time() - t0);
       p('Build took ' + time + ' seconds.');
+    }
+
+
+// parse command-line options
+  function parseOptions(args: Array<String>)
+    {
+      options = {
+        fileName: '',
+        tasks: null,
+      };
+
+      // assume that last argument is always file name
+      options.fileName = args.pop();
+
+      while (args.length > 0)
+        {
+          var opt = args.shift();
+
+          // tasks list
+          if (opt == '--tasks')
+            {
+              if (args.length == 0)
+                {
+                  p('Tasks list empty.');
+                  Sys.exit(1);
+                }
+
+              var str = args.shift();
+              options.tasks = str.split(',');
+            }
+        }
+
+//      trace(options);
     }
 
 
@@ -207,6 +254,7 @@ typedef _GameConfig = {
 
 typedef _TaskConfig = {
   var type: String;
+  var id: String;
   var name: String;
   var result: String;
   var stats: String;
@@ -216,5 +264,11 @@ typedef _TaskConfig = {
   var cardHeight: Int;
   var deckWidth: Int;
   var list: Array<String>;
+}
+
+
+typedef _Options = {
+  var fileName: String;
+  var tasks: Array<String>;
 }
 
