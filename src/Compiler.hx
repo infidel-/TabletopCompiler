@@ -15,6 +15,7 @@ class Compiler
   var options: _Options;
   var tts: _TTSSave;
   var currentDeckID: Int;
+  var resultsDir: String;
 
   public function new()
     {
@@ -49,11 +50,14 @@ class Compiler
       var json = File.getContent(options.fileName);
       game = Json.parse(json);
 
+      var dateStr = DateTools.format(Date.now(), "%Y%m%d-%H%M");
+      resultsDir = 'results-' + game.version + '-' + dateStr;
+
       p('Building game ' + game.name + ' version ' +
         game.version + '...');
 
       // create temp dirs
-      Sys.command('mkdir', [ '-p', 'tmp', 'results' ]);
+      Sys.command('mkdir', [ '-p', 'tmp', resultsDir ]);
 
       // parse TTS save
 //      if (game.tabletopSimulator != null)
@@ -89,11 +93,15 @@ class Compiler
           p('Task took ' + time + ' seconds.');
         }
 
+      // TTS: fix background
+      tts.TableURL = game.tabletopSimulator.prefix +
+        resultsDir + '/' + game.tabletopSimulator.tableBackground;
+
       // save TTS file
       p('Saving TTS file ' + game.tabletopSimulator.result + '...');
       var json = Json.stringify(tts, null, "  ");
       File.saveContent(
-        'results/' + game.tabletopSimulator.result, json);
+        resultsDir + '/' + game.tabletopSimulator.result, json);
 
       var time = Std.int(Sys.time() - t0);
       p('Build took ' + time + ' seconds.');
@@ -180,9 +188,9 @@ class Compiler
       ttsObj.ContainedObjects = [];
       var ttsDeck: _TTSCustomDeck = {
         FaceURL: game.tabletopSimulator.prefix +
-          'results/' + task.result,
+          resultsDir + '/' + task.result,
         BackURL: game.tabletopSimulator.prefix +
-          'results/' + task.back,
+          resultsDir + '/' + task.back,
         NumWidth: 0,
         NumHeight: 0,
         BackIsHidden: false,
@@ -298,7 +306,7 @@ class Compiler
         'tmp/card*.png',
         '-geometry', '100%',
         '-tile', deckWidth + 'x',
-        'results/' + task.result
+        resultsDir + '/' + task.result
       ]);
     }
 
@@ -310,7 +318,7 @@ class Compiler
         runCommand('cp', [
           '-f',
           file,
-          "results/",
+          resultsDir + '/',
         ]);
     }
 
@@ -344,6 +352,7 @@ typedef _GameConfig = {
   var version: String;
   var optimizeDecks: Bool;
   var tabletopSimulator: {
+    var tableBackground: String;
     var template: String;
     var prefix: String;
     var result: String;
@@ -378,6 +387,7 @@ typedef _Options = {
 
 typedef _TTSSave = {
   var SaveName: String;
+  var TableURL: String;
   var ObjectStates: Array<_TTSObject>;
 }
 
