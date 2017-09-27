@@ -425,7 +425,6 @@ typedef _TaskConfig = {
   var result: String;
   var back: String;
   var stats: String;
-  var lang: Array<String>;
   var template: String;
   var cardWidth: Int;
   var cardHeight: Int;
