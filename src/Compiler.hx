@@ -1,8 +1,6 @@
 // compile game.json into a set of images for TTS
 // TODO: print game version on all cards
 // TODO: print game name somewhere?
-// TODO: multiple languages
-// TODO: change images
 
 import sys.FileSystem;
 import sys.io.File;
@@ -16,6 +14,7 @@ class Compiler
   var tts: _TTSSave;
   var currentDeckID: Int;
   var resultsDir: String;
+  var listStrings: Map<String, String>;
 
   public function new()
     {
@@ -23,6 +22,7 @@ class Compiler
       tts = null;
       options = null;
       currentDeckID = 99;
+      listStrings = new Map();
     }
 
 
@@ -35,6 +35,7 @@ class Compiler
           p('Usage: compiler [options] <game.json>');
           p('Command-line options:');
           p('  --tasks <task,...>: run only given tasks (comma-separated)');
+          p('  --lang <language>: build for a given language [default: en]');
           return;
         }
 
@@ -51,10 +52,13 @@ class Compiler
       game = Json.parse(json);
 
       var dateStr = DateTools.format(Date.now(), "%Y%m%d-%H%M");
-      resultsDir = 'results-' + game.version + '-' + dateStr;
+      resultsDir = 'results-' + game.version +
+        '-' + options.lang + '-' + dateStr;
 
       p('Building game ' + game.name + ' version ' +
-        game.version + '...');
+        game.version + ', language: ' + options.lang + '...');
+
+      readStrings();
 
       // create temp dirs
       Sys.command('mkdir', [ '-p', 'tmp', resultsDir ]);
@@ -72,15 +76,19 @@ class Compiler
       var t0 = Sys.time();
       for (t in game.tasks)
         {
+          var name = listStrings[t.id];
+          if (name == null)
+            name = t.name;
+
           // only run given tasks
           if (options.tasks != null &&
               !Lambda.has(options.tasks, t.id))
             {
-              p('Skipping task ' + t.name + '...');
+              p('Skipping task ' + name + ' [' + t.id + ']...');
               continue;
             }
 
-          p('Running task ' + t.name + '...');
+          p('Running task ' + name + ' [' + t.id + ']...');
           var t1 = Sys.time();
 
           if (t.type == 'deck')
@@ -114,6 +122,7 @@ class Compiler
       options = {
         fileName: '',
         tasks: null,
+        lang: 'en',
       };
 
       // assume that last argument is always file name
@@ -135,9 +144,51 @@ class Compiler
               var str = args.shift();
               options.tasks = str.split(',');
             }
+
+          // language
+          else if (opt == '--lang')
+            {
+              if (args.length == 0)
+                {
+                  p('Language not given.');
+                  Sys.exit(1);
+                }
+
+              options.lang = args.shift();
+            }
         }
 
 //      trace(options);
+    }
+
+
+// read localization strings file
+  function readStrings()
+    {
+      p('Reading strings from ' + game.strings +
+        ' for language ' + options.lang + '...');
+      var file = File.getContent(game.strings);
+      var strings = Utf8Reader.parseCsv(file);
+
+      // find column for a given language
+      var cols = strings.shift();
+      var idx = 0;
+      for (c in cols)
+        {
+          if (c.toLowerCase() == options.lang)
+            break;
+
+          idx++;
+        }
+      if (idx == 0)
+        {
+          p('No strings for language ' + options.lang + '.');
+          Sys.exit(1);
+        }
+
+      // put strings into map
+      for (row in strings)
+        listStrings.set(row[0], row[idx]);
     }
 
 
@@ -181,7 +232,7 @@ class Compiler
 
       // init some common fields
       ttsObj.Name = 'DeckCustom';
-      ttsObj.Nickname = task.name;
+      ttsObj.Nickname = listStrings[task.id];
       ttsObj.DeckIDs = [];
       ttsObj.CustomDeck = {};
       var tplCard = ttsObj.ContainedObjects[0];
@@ -205,7 +256,7 @@ class Compiler
 */
 
       // generate single card files
-      var cardID = 1;
+      var cardID = 0;
       var numCards = 0;
       for (row in stats)
         {
@@ -228,10 +279,15 @@ class Compiler
               if (i == colAmount)
                 continue;
 
-              // TODO: proper language support
               var key = '$' + colnames[i];
-              if (key.indexOf('.EN') > 0)
+
+              // wrong language
+              if (key.indexOf('.') > 0 &&
+                  key.indexOf('.' +
+                    options.lang.toUpperCase()) < 0)
                 continue;
+
+              // cut key name
               if (key.indexOf('.') > 0)
                 key = key.substr(0, key.indexOf('.'));
               var val = row[i];
@@ -350,6 +406,7 @@ class Compiler
 typedef _GameConfig = {
   var name: String;
   var version: String;
+  var strings: String;
   var optimizeDecks: Bool;
   var tabletopSimulator: {
     var tableBackground: String;
@@ -380,6 +437,7 @@ typedef _TaskConfig = {
 typedef _Options = {
   var fileName: String;
   var tasks: Array<String>;
+  var lang: String;
 }
 
 
