@@ -95,6 +95,8 @@ class Compiler
             runTaskDeck(t);
           else if (t.type == 'copy')
             runTaskCopy(t);
+          else if (t.type == 'replace_names')
+            runTaskReplaceNames(t);
           else p("Unknown task type: " + t.type);
 
           var time = Std.int(Sys.time() - t1);
@@ -192,6 +194,27 @@ class Compiler
     }
 
 
+// get TTS object by its $ID (stored in Nickname)
+// exit application on error
+  function getTTSObject(name: String): _TTSObject
+    {
+      var ttsObj: _TTSObject = null;
+      for (o in tts.ObjectStates)
+        if (o.Nickname == name)
+          {
+            ttsObj = o;
+            break;
+          }
+      if (ttsObj == null)
+        {
+          p('No TTS object for ' + name);
+          Sys.exit(1);
+        }
+
+      return ttsObj;
+    }
+
+
 // run task: deck
   function runTaskDeck(task: _TaskConfig)
     {
@@ -216,21 +239,8 @@ class Compiler
 
       // find first card in placeholder deck
       // we will use it as an object template
-      var ttsObj: _TTSObject = null;
-      var deckName = '$' + task.id;
-      for (o in tts.ObjectStates)
-        if (o.Nickname == deckName)
-          {
-            ttsObj = o;
-            break;
-          }
-      if (ttsObj == null)
-        {
-          p('No placeholder TTS deck for ' + deckName);
-          Sys.exit(1);
-        }
-
       // init some common fields
+      var ttsObj = getTTSObject('$' + task.id);
       ttsObj.Name = 'DeckCustom';
       ttsObj.Nickname = listStrings[task.id];
       ttsObj.DeckIDs = [];
@@ -376,6 +386,17 @@ class Compiler
           file,
           resultsDir + '/',
         ]);
+    }
+
+
+// run task: replace TTS object names
+  function runTaskReplaceNames(task: _TaskConfig)
+    {
+      for (name in task.list)
+        {
+          var ttsObj = getTTSObject('$' + name);
+          ttsObj.Nickname = listStrings[name];
+        }
     }
 
 
