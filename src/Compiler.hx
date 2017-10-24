@@ -97,6 +97,8 @@ class Compiler
             runTaskCopy(t);
           else if (t.type == 'replace_names')
             runTaskReplaceNames(t);
+          else if (t.type == 'tile')
+            runTaskTile(t);
           else p("Unknown task type: " + t.type);
 
           var time = Std.int(Sys.time() - t1);
@@ -277,37 +279,10 @@ class Compiler
           ttsCard.CardID = ttsCardID;
           ttsObj.ContainedObjects.push(ttsCard);
 
-          var str = tpl;
-          var cardTitle = null;
-          for (i in 0...row.length)
-            {
-              // out of bounds
-              if (i >= colnames.length)
-                break;
-
-              // skip special columns
-              if (i == colAmount)
-                continue;
-
-              var key = '$' + colnames[i];
-
-              // wrong language
-              if (key.indexOf('.') > 0 &&
-                  key.indexOf('.' +
-                    options.lang.toUpperCase()) < 0)
-                continue;
-
-              // cut key name
-              if (key.indexOf('.') > 0)
-                key = key.substr(0, key.indexOf('.'));
-              var val = row[i];
-              if (key == "$TITLE")
-                cardTitle = val;
-
-//              trace(key + ': ' + val);
-              str = StringTools.replace(str, key, val);
-            }
-
+          // replace all markers with strings and get card title
+          var res = replaceStrings(colnames, colAmount, tpl, row);
+          var str = res.str;
+          var cardTitle = res.cardTitle;
           if (cardTitle != null)
             ttsCard.Nickname = cardTitle;
 
@@ -377,6 +352,47 @@ class Compiler
     }
 
 
+// replaces all $ markers in a template with strings
+  function replaceStrings(colnames: Array<String>,
+    colAmount: Int,
+    tpl: String, row: Dynamic):
+      { str: String, cardTitle: String }
+    {
+      var str = tpl;
+      var cardTitle = null;
+      for (i in 0...row.length)
+        {
+          // out of bounds
+          if (i >= colnames.length)
+            break;
+
+          // skip special columns
+          if (i == colAmount)
+            continue;
+
+          var key = '$' + colnames[i];
+
+          // wrong language
+          if (key.indexOf('.') > 0 &&
+              key.indexOf('.' +
+                options.lang.toUpperCase()) < 0)
+            continue;
+
+          // cut key name
+          if (key.indexOf('.') > 0)
+            key = key.substr(0, key.indexOf('.'));
+          var val = row[i];
+          if (key == "$TITLE")
+            cardTitle = val;
+
+//              trace(key + ': ' + val);
+          str = StringTools.replace(str, key, val);
+        }
+
+      return { str: str, cardTitle: cardTitle };
+    }
+
+
 // run task: copy files
   function runTaskCopy(task: _TaskConfig)
     {
@@ -397,6 +413,46 @@ class Compiler
           var ttsObj = getTTSObject('$' + name);
           ttsObj.Nickname = listStrings[name];
         }
+    }
+
+
+// run task: tile
+  function runTaskTile(task: _TaskConfig)
+    {
+      p('Reading stats ' + task.stats + '...');
+      var statsFile = File.getContent(task.stats);
+      p('Reading template ' + task.template + '...');
+      var tpl = File.getContent(task.template);
+
+      // parse stats file
+      var stats = Utf8Reader.parseCsv(statsFile);
+      var colnames = stats.shift();
+
+      // replace all markers with strings and get card title
+      var res = replaceStrings(colnames, -1, tpl, stats[0]);
+      var str = res.str;
+
+      // generate HTML file
+      // needs to be in the same dir for relative links to work
+      File.saveContent('_tmp_card.html', str);
+
+      // render PNG from HTML
+      runCommand("phantomjs", [
+        'rasterize.js',
+        '_tmp_card.html',
+        resultsDir + '/' + task.result,
+        task.cardWidth + 'px*' + task.cardHeight + 'px'
+      ]);
+
+      // fix tile object
+      var ttsObj = getTTSObject('$' + task.id);
+      ttsObj.Nickname = listStrings[task.id];
+      ttsObj.CustomImage.ImageURL =
+        game.tabletopSimulator.prefix +
+        resultsDir + '/' + task.result;
+      ttsObj.CustomImage.ImageSecondaryURL =
+        game.tabletopSimulator.prefix +
+        resultsDir + '/' + task.back;
     }
 
 
@@ -477,6 +533,12 @@ typedef _TTSObject = {
   var CustomDeck: Dynamic;
   var ContainedObjects: Array<_TTSCard>;
   var GUID: String;
+
+  // custom tile
+  var CustomImage: {
+    var ImageURL: String;
+    var ImageSecondaryURL: String;
+  };
 }
 
 typedef _TTSCard = {
